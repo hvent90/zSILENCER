@@ -332,7 +332,7 @@ bool Resources::LoadSounds(Game & game, bool dedicatedserver){
 		}
 	}
 	SDL_RWclose(file);
-	menumusic = Mix_LoadMUS("CLOSER2.MP3");
+	menumusic = Mix_LoadMUS((GetResDir() + "CLOSER2.mp3").c_str());
 	return true;
 }
 
