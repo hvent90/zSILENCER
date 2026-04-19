@@ -1,0 +1,10 @@
+{
+	"name": "zsilencer",
+	"version-string": "0.0.0",
+	"description": "zSILENCER multiplayer client build dependencies",
+	"dependencies": [
+		"sdl2",
+		"sdl2-mixer",
+		"zlib"
+	]
+}

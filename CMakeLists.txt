@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.5)
+cmake_minimum_required(VERSION 3.15)
 
 set(PROJECT zsilencer)
 project(${PROJECT})
@@ -13,8 +13,37 @@ else()
 	file(GLOB_RECURSE sources src/*.cpp src/*.h)
 endif()
 
-add_executable(${PROJECT} ${sources})
-target_compile_options(${PROJECT} PUBLIC -std=c++1y)
+# Extra files that get bundled into the .app on macOS (icon + data/).
+set(bundle_extras "")
+if(APPLE)
+	set(bundle_icon "${CMAKE_CURRENT_SOURCE_DIR}/res/icon.icns")
+	set_source_files_properties("${bundle_icon}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+	list(APPEND bundle_extras "${bundle_icon}")
+
+	file(GLOB_RECURSE data_files "${CMAKE_CURRENT_SOURCE_DIR}/data/*")
+	foreach(f ${data_files})
+		file(RELATIVE_PATH rel "${CMAKE_CURRENT_SOURCE_DIR}" "${f}")
+		get_filename_component(rel_dir "${rel}" DIRECTORY)
+		set_source_files_properties("${f}" PROPERTIES MACOSX_PACKAGE_LOCATION "${rel_dir}")
+		list(APPEND bundle_extras "${f}")
+	endforeach()
+endif()
+
+if(APPLE)
+	add_executable(${PROJECT} MACOSX_BUNDLE ${sources} ${bundle_extras})
+	set_target_properties(${PROJECT} PROPERTIES
+		MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/zSILENCER-Info.plist"
+		MACOSX_BUNDLE_BUNDLE_NAME "zSILENCER"
+		MACOSX_BUNDLE_GUI_IDENTIFIER "com.zsilencer.app"
+		MACOSX_BUNDLE_ICON_FILE "icon.icns"
+	)
+elseif(WIN32)
+	add_executable(${PROJECT} WIN32 ${sources})
+else()
+	add_executable(${PROJECT} ${sources})
+endif()
+
+target_compile_features(${PROJECT} PUBLIC cxx_std_14)
 
 set(ZSILENCER_LOBBY_HOST "127.0.0.1" CACHE STRING "Lobby host the client connects to at startup")
 set(ZSILENCER_LOBBY_PORT "517" CACHE STRING "Lobby TCP port")
