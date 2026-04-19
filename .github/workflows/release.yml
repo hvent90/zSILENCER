@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install deps (Homebrew)
-        run: brew install sdl2 sdl2_mixer
+        run: brew install sdl2 sdl2_mixer dylibbundler
 
       - name: Configure
         env:
@@ -30,6 +30,24 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release -j"$(sysctl -n hw.ncpu)"
+
+      - name: Bundle dylibs
+        working-directory: build
+        run: |
+          mkdir -p zsilencer.app/Contents/Frameworks
+          dylibbundler \
+            --overwrite-dir \
+            --bundle-deps \
+            --create-dir \
+            --fix-file zsilencer.app/Contents/MacOS/zsilencer \
+            --dest-dir zsilencer.app/Contents/Frameworks/ \
+            --install-path @rpath/
+          install_name_tool -add_rpath @executable_path/../Frameworks \
+            zsilencer.app/Contents/MacOS/zsilencer 2>/dev/null || true
+          echo "--- bundled dylibs ---"
+          ls zsilencer.app/Contents/Frameworks/
+          echo "--- main binary linkage ---"
+          otool -L zsilencer.app/Contents/MacOS/zsilencer
 
       - name: Ad-hoc codesign
         working-directory: build
