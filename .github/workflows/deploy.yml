@@ -1,0 +1,85 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install C++ build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake build-essential libsdl2-dev libsdl2-mixer-dev zlib1g-dev
+
+      - name: Build lobby server
+        working-directory: server
+        run: go build -trimpath -ldflags '-s -w' -o zsilencer-lobby .
+
+      - name: Build dedicated server (C++ / ARM64)
+        env:
+          LOBBY_HOST: ${{ vars.LOBBY_HOST }}
+        run: |
+          mkdir -p build
+          cd build
+          cmake -DZSILENCER_LOBBY_HOST="${LOBBY_HOST:-silencer.hventura.com}" ..
+          make -j"$(nproc)"
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          ssh-keyscan -H "${{ vars.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        env:
+          HOST: ${{ vars.DEPLOY_HOST }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          SHORT=${SHA:0:8}
+          STAGING=/tmp/zsilencer-$SHORT
+          RELEASE=/opt/zsilencer/releases/$SHORT
+          SSH="ssh -i ~/.ssh/deploy ubuntu@$HOST"
+          SCP="scp -i ~/.ssh/deploy"
+
+          $SSH "mkdir -p $STAGING"
+          $SCP server/zsilencer-lobby ubuntu@$HOST:$STAGING/
+          $SCP build/zsilencer        ubuntu@$HOST:$STAGING/
+          $SCP -r data                ubuntu@$HOST:$STAGING/
+
+          $SSH "
+            set -e
+            sudo mkdir -p /opt/zsilencer/releases
+            sudo rm -rf $RELEASE
+            sudo mv $STAGING $RELEASE
+            sudo chmod +x $RELEASE/zsilencer-lobby $RELEASE/zsilencer
+            sudo ln -sfn $RELEASE /opt/zsilencer/current
+            sudo systemctl restart zsilencer-lobby
+            sleep 2
+            sudo systemctl is-active zsilencer-lobby
+          "
+
+      - name: Prune old releases (keep last 3)
+        env:
+          HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          ssh -i ~/.ssh/deploy ubuntu@$HOST "
+            cd /opt/zsilencer/releases
+            ls -1t | tail -n +4 | xargs -r sudo rm -rf
+          "
