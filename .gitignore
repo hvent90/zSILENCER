@@ -4,3 +4,12 @@ server/zsilencer-lobby
 server/*.tmp
 *.o
 *.obj
+
+# Terraform
+terraform/**/.terraform/
+terraform/**/*.tfstate
+terraform/**/*.tfstate.*
+terraform/**/*.tfvars
+!terraform/**/*.tfvars.example
+terraform/**/backend.hcl
+!terraform/**/backend.hcl.example

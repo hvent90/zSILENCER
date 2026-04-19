@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+aws_region       = "us-west-1"
+ssh_public_key   = "ssh-ed25519 AAAAC3... you@host"
+ssh_allowed_cidr = "1.2.3.4/32" # your public IP — check with: curl ifconfig.me
+
+# Optional DNS (omit if managing DNS at another registrar):
+# domain_name     = "lobby.example.com"
+# route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+# Optional overrides:
+# instance_type        = "t4g.small"
+# ebs_volume_size      = 8
+# lobby_version_string = "00022"

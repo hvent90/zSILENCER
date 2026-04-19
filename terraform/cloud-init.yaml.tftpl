@@ -1,0 +1,64 @@
+#cloud-config
+# Bootstraps the zSILENCER lobby host:
+#   - creates service user
+#   - formats + mounts the data EBS volume at /var/lib/<project>
+#   - installs a systemd unit that runs the lobby binary with CAP_NET_BIND_SERVICE
+#     (so it can bind port 517 without running as root)
+#
+# The binaries themselves are NOT deployed here — GitHub Actions scps them into
+# /opt/<project>/current/ post-boot. Until they land, the service will crash-loop
+# quietly (Restart=always).
+
+users:
+  - default
+  - name: ${project_name}
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/${project_name}
+
+bootcmd:
+  - [ cloud-init-per, once, mkfs_data, sh, -c, "mkfs.ext4 -L ${project_name}-data /dev/nvme1n1 || true" ]
+
+mounts:
+  - [ "LABEL=${project_name}-data", /var/lib/${project_name}, ext4, "defaults,nofail,x-systemd.device-timeout=30s", "0", "2" ]
+
+write_files:
+  - path: /etc/systemd/system/${project_name}-lobby.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=zSILENCER lobby server
+      After=network-online.target var-lib-${project_name}.mount
+      Wants=network-online.target
+      Requires=var-lib-${project_name}.mount
+
+      [Service]
+      Type=simple
+      User=${project_name}
+      Group=${project_name}
+      WorkingDirectory=/opt/${project_name}/current
+      ExecStart=/opt/${project_name}/current/zsilencer-lobby \
+        -addr :517 \
+        -db /var/lib/${project_name}/lobby.json \
+        -public-addr ${public_hostname} \
+        -game-binary /opt/${project_name}/current/zsilencer \
+        -version ${lobby_version}
+      Restart=always
+      RestartSec=2
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/${project_name}
+      LimitNOFILE=65535
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - mkdir -p /opt/${project_name}/releases
+  - mkdir -p /var/lib/${project_name}
+  - chown -R ${project_name}:${project_name} /opt/${project_name} /var/lib/${project_name}
+  - systemctl daemon-reload
+  - systemctl enable ${project_name}-lobby.service
