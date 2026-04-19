@@ -35,6 +35,8 @@ typedef int SOCKET;
 #include <winsock2.h>
 #include <windows.h>
 #include <direct.h>
+#include <io.h>
+#include <sys/stat.h>
 #undef INTERFACE
 #undef CreateDirectory
 typedef int mode_t;
