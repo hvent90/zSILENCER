@@ -49,16 +49,71 @@ jobs:
           echo "--- main binary linkage ---"
           otool -L zsilencer.app/Contents/MacOS/zsilencer
 
-      - name: Ad-hoc codesign
-        working-directory: build
+      - name: Import Developer ID cert
+        env:
+          CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
         run: |
-          codesign --force --deep --sign - zsilencer.app
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+          echo "$CERT_P12_BASE64" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security import /tmp/cert.p12 -P "$CERT_P12_PASSWORD" \
+            -A -t cert -f pkcs12 -k build.keychain
+          security list-keychains -d user -s build.keychain \
+            $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm /tmp/cert.p12
+          security find-identity -v -p codesigning build.keychain
+
+      - name: Codesign with Developer ID
+        working-directory: build
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          IDENTITY="Developer ID Application"
+          # Sign inside-out: dylibs first, then main binary, then bundle.
+          # --options runtime (Hardened Runtime) + --timestamp are required
+          # by notarytool.
+          find zsilencer.app/Contents/Frameworks -name "*.dylib" -print0 \
+            | xargs -0 -n1 codesign --force --timestamp --options runtime \
+              --sign "$IDENTITY"
+          codesign --force --timestamp --options runtime \
+            --sign "$IDENTITY" zsilencer.app/Contents/MacOS/zsilencer
+          codesign --force --timestamp --options runtime \
+            --sign "$IDENTITY" zsilencer.app
           codesign --verify --deep --strict --verbose=2 zsilencer.app
+
+      - name: Notarize and staple
+        working-directory: build
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ditto -ck --keepParent zsilencer.app /tmp/notarize.zip
+          xcrun notarytool submit /tmp/notarize.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          rm /tmp/notarize.zip
+          xcrun stapler staple zsilencer.app
+          xcrun stapler validate zsilencer.app
+          spctl -a -vv -t execute zsilencer.app
 
       - name: Package .app
         working-directory: build
         run: |
           ditto -ck --sequesterRsrc --keepParent zsilencer.app zsilencer-macos-arm64.zip
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain build.keychain || true
 
       - uses: actions/upload-artifact@v4
         with:
@@ -152,15 +207,5 @@ jobs:
 
             ## First-run warnings
 
-            These builds aren't code-signed, so your OS will warn you the first time you run them. They're safe — you just need to tell the OS to trust them.
-
-            ### macOS
-            If you see *"zsilencer.app is damaged and can't be opened"*:
-
-            - **Easy way:** right-click the app → **Open** → click **Open** in the dialog. Only needed the first time.
-            - **From Terminal:** `xattr -cr /path/to/zsilencer.app`
-
             ### Windows
-            If SmartScreen shows *"Windows protected your PC"*:
-
-            - Click **More info** → **Run anyway**.
+            The Windows build isn't code-signed. If SmartScreen shows *"Windows protected your PC"*, click **More info** → **Run anyway**.
