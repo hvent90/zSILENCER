@@ -31,6 +31,12 @@ jobs:
       - name: Build
         run: cmake --build build --config Release -j"$(sysctl -n hw.ncpu)"
 
+      - name: Ad-hoc codesign
+        working-directory: build
+        run: |
+          codesign --force --deep --sign - zsilencer.app
+          codesign --verify --deep --strict --verbose=2 zsilencer.app
+
       - name: Package .app
         working-directory: build
         run: |
