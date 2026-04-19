@@ -45,7 +45,7 @@ write_files:
         -db /var/lib/${project_name}/lobby.json \
         -public-addr ${public_hostname} \
         -game-binary /opt/${project_name}/current/zsilencer \
-        -version ${lobby_version}
+        -version "${lobby_version}"
       Restart=always
       RestartSec=2
       AmbientCapabilities=CAP_NET_BIND_SERVICE

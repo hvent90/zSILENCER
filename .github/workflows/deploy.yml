@@ -19,12 +19,19 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          cache-dependency-path: server/go.sum
 
       - name: Install C++ build deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            cmake build-essential libsdl2-dev libsdl2-mixer-dev zlib1g-dev
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: cmake build-essential libsdl2-dev libsdl2-mixer-dev zlib1g-dev
+          version: 1.0
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ${{ runner.os }}-${{ github.job }}
+          max-size: 500M
 
       - name: Build lobby server
         working-directory: server
@@ -34,9 +41,11 @@ jobs:
         env:
           LOBBY_HOST: ${{ vars.LOBBY_HOST }}
         run: |
-          mkdir -p build
-          cd build
-          cmake -DZSILENCER_LOBBY_HOST="${LOBBY_HOST:-silencer.hventura.com}" ..
+          mkdir -p build && cd build
+          cmake \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DZSILENCER_LOBBY_HOST="${LOBBY_HOST:-silencer.hventura.com}" ..
           make -j"$(nproc)"
 
       - name: Tailscale
