@@ -62,3 +62,8 @@ variable "tailscale_hostname" {
   type        = string
   default     = "silencer"
 }
+
+variable "deploy_ssh_public_key" {
+  description = "Public half of the SSH keypair GitHub Actions uses to deploy. The private half lives in the DEPLOY_SSH_KEY repo secret. Appended to ubuntu's authorized_keys on top of ssh_public_key."
+  type        = string
+}

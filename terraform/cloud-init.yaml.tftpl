@@ -16,6 +16,12 @@ users:
     shell: /usr/sbin/nologin
     home: /var/lib/${project_name}
 
+# Top-level ssh_authorized_keys appends to the default user (ubuntu) on top of
+# whatever aws_key_pair injected. Used so GitHub Actions has its own key distinct
+# from the admin key — both reach ubuntu@silencer over the tailnet.
+ssh_authorized_keys:
+  - ${deploy_ssh_public_key}
+
 bootcmd:
   - [ cloud-init-per, once, mkfs_data, sh, -c, "mkfs.ext4 -L ${project_name}-data /dev/nvme1n1 || true" ]
 
