@@ -44,7 +44,6 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy
           chmod 600 ~/.ssh/deploy
-          ssh-keyscan -H "${{ vars.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Deploy
         env:
@@ -55,8 +54,9 @@ jobs:
           SHORT=${SHA:0:8}
           STAGING=/tmp/zsilencer-$SHORT
           RELEASE=/opt/zsilencer/releases/$SHORT
-          SSH="ssh -i ~/.ssh/deploy ubuntu@$HOST"
-          SCP="scp -i ~/.ssh/deploy"
+          SSH_OPTS="-i ~/.ssh/deploy -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts"
+          SSH="ssh $SSH_OPTS ubuntu@$HOST"
+          SCP="scp $SSH_OPTS"
 
           $SSH "mkdir -p $STAGING"
           $SCP server/zsilencer-lobby ubuntu@$HOST:$STAGING/
