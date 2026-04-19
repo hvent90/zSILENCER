@@ -46,7 +46,7 @@ void CreateDirectory(const char * path){
         if(*p == '/'){
             *p = '\0';
 #ifdef WIN32
-			if(_mkdir(buffer, mask) != 0){
+			if(_mkdir(buffer) != 0){
 #else
             if(mkdir(buffer, mask) != 0){
 #endif
@@ -59,7 +59,7 @@ void CreateDirectory(const char * path){
     }
 
 #ifdef WIN32
-	if(_mkdir(buffer, mask) != 0){
+	if(_mkdir(buffer) != 0){
 #else
     if(mkdir(buffer, mask) != 0){
 #endif

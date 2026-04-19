@@ -14,6 +14,7 @@
 #include <SDL_syswm.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #ifdef POSIX
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -35,6 +36,11 @@ typedef int SOCKET;
 #include <windows.h>
 #include <direct.h>
 #undef INTERFACE
+#undef CreateDirectory
+typedef int mode_t;
+#ifndef PATH_MAX
+#define PATH_MAX MAX_PATH
+#endif
 #ifndef EADDRINUSE
 #define EADDRINUSE WSAEADDRINUSE
 #endif
