@@ -60,6 +60,8 @@ include_directories(${SDL2_INCLUDE_DIR} ${SDL2_MIXER_INCLUDE_DIRS} ${ZLIB_INCLUD
 if(APPLE)
 	find_library(COCOA_FRAMEWORK Cocoa)
 	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY} ${COCOA_FRAMEWORK})
+elseif(WIN32)
+	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY} ws2_32)
 else()
 	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY})
 endif()
