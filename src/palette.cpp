@@ -117,6 +117,10 @@ void Palette::Save(void){
 	sprintf(filename, "PALETTECALC%d.BIN", currentpalette);
 	CDDataDir();
 	SDL_RWops * file = SDL_RWFromFile((GetDataDir() + filename).c_str(), "wb");
+	if(!file){
+		printf("Could not open %s for writing: %s\n", filename, SDL_GetError());
+		return;
+	}
 	for(unsigned int i = 0; i < 256; i++){
 		SDL_RWwrite(file, &brightness[currentpalette][(i * 256)], 256, 1);
 		SDL_RWwrite(file, &colored[currentpalette][(i * 256)], 256, 1);

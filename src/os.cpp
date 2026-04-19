@@ -17,7 +17,11 @@ std::string GetResDir(void){
 
 std::string GetDataDir(void){
 #ifdef __linux
-	std::string d = getpwuid(getuid())->pw_dir;
+	// Prefer $HOME so systemd units can redirect the data dir via
+	// Environment=HOME=... without needing to modify pw_dir. Fall back
+	// to pw_dir for sessions where HOME isn't set.
+	const char * home = getenv("HOME");
+	std::string d = (home && *home) ? home : getpwuid(getuid())->pw_dir;
 	d += "/.config/zsilencer/";
 	CreateDirectory(d.c_str());
 	return d;

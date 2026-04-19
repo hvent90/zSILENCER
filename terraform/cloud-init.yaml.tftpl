@@ -40,6 +40,10 @@ write_files:
       User=${project_name}
       Group=${project_name}
       WorkingDirectory=/opt/${project_name}/current
+      # The dedicated-server subprocess writes PALETTECALC*.BIN under $HOME.
+      # Point HOME at the data volume so writes land inside ReadWritePaths
+      # instead of /home/${project_name} (blocked by ProtectHome=true).
+      Environment=HOME=/var/lib/${project_name}
       ExecStart=/opt/${project_name}/current/zsilencer-lobby \
         -addr :517 \
         -db /var/lib/${project_name}/lobby.json \
