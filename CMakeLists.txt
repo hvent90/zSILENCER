@@ -7,7 +7,11 @@ include(GNUInstallDirs)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-file(GLOB_RECURSE sources src/*.cpp src/*.h src/*.mm)
+if(APPLE)
+	file(GLOB_RECURSE sources src/*.cpp src/*.h src/*.mm)
+else()
+	file(GLOB_RECURSE sources src/*.cpp src/*.h)
+endif()
 
 add_executable(${PROJECT} ${sources})
 target_compile_options(${PROJECT} PUBLIC -std=c++1y)
