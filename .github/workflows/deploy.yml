@@ -40,12 +40,12 @@ jobs:
           make -j"$(nproc)"
 
       - name: Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-          version: latest
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          sudo tailscale up \
+            --authkey='${{ secrets.TS_AUTHKEY }}' \
+            --hostname=gh-runner-${{ github.run_id }} \
+            --advertise-tags=tag:ci
 
       - name: Configure SSH
         run: |
