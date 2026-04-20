@@ -80,3 +80,8 @@ set(CPACK_PACKAGE_NAME "zSilencer")
 set(CPACK_PACKAGE_VERSION "00023")
 
 include(CPack)
+
+option(ZSILENCER_BUILD_TESTS "Build unit tests" OFF)
+if(ZSILENCER_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
