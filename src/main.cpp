@@ -148,12 +148,12 @@ static void CleanupPreviousUpdate(void) {
 	// UpdaterStage2::ResolveInstallDir but that's not worth the coupling yet.
 #else
 	char buf[1024];
-	ssize_t n = 0;
+	int n = 0;
 #ifdef _WIN32
 	GetModuleFileNameA(NULL, buf, sizeof(buf));
-	n = (ssize_t)strlen(buf);
+	n = (int)strlen(buf);
 #else
-	n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+	n = (int)readlink("/proc/self/exe", buf, sizeof(buf) - 1);
 #endif
 	if (n <= 0) return;
 	buf[n] = 0;
@@ -203,16 +203,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 #ifndef POSIX
 	if(lpCmdLine && strstr(lpCmdLine, "--self-update-stage2")){
-		// Simple split-on-space tokenizer — good enough since we control the invocation.
-		std::vector<char*> tokens;
-		static char exe[] = "zsilencer-stage2";
-		tokens.push_back(exe);
-		char *cmd = _strdup(lpCmdLine);
-		char *tok = strtok(cmd, " ");
-		while(tok){ tokens.push_back(tok); tok = strtok(NULL, " "); }
-		int r = UpdaterStage2::Run((int)tokens.size(), tokens.data());
-		free(cmd);
-		return r;
+		// Use MSVCRT's pre-parsed argv. The previous strtok(" ") split on
+		// every space and wasn't quote-aware — paths like
+		// "C:\Users\Space Command\..." passed via CreateProcessA fragmented
+		// into orphan tokens, and stage-2 saw empty --install-dir / --relaunch
+		// values.
+		return UpdaterStage2::Run(__argc, __argv);
 	}
 #endif
 

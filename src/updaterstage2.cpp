@@ -358,7 +358,8 @@ int Run(int argc, char **argv) {
 bool Launch(const std::string &zippath) {
     std::string self = MySelfPath();
     std::string install = ResolveInstallDir(self);
-    std::string temp = TempDir() +
+    std::string tempdir = TempDir();
+    std::string temp = tempdir +
 #ifdef _WIN32
         "\\zsilencer-stage2.exe";
 #else
@@ -369,6 +370,33 @@ bool Launch(const std::string &zippath) {
         Logf("copy self → %s failed", temp.c_str());
         return false;
     }
+
+#ifdef _WIN32
+    // Windows resolves the main exe's import table from the exe's own
+    // directory before our code runs. Since stage-2 lives in %TEMP% but
+    // its DLLs (zlib1, SDL2, libcurl, etc.) live in the install dir, the
+    // loader fails with "zlib1.dll was not found". Copy every *.dll from
+    // the install dir next to zsilencer-stage2.exe so imports resolve.
+    {
+        std::string pattern = install + "\\*.dll";
+        WIN32_FIND_DATAA fd{};
+        HANDLE h = FindFirstFileA(pattern.c_str(), &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do {
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                std::string from = install + "\\" + fd.cFileName;
+                std::string to = tempdir + "\\" + fd.cFileName;
+                if (!CopyFile_(from, to)) {
+                    Logf("copy dll %s -> %s failed", from.c_str(), to.c_str());
+                }
+            } while (FindNextFileA(h, &fd));
+            FindClose(h);
+        } else {
+            Logf("no DLLs found at %s (FindFirstFile err=%lu); stage-2 may fail to load",
+                pattern.c_str(), GetLastError());
+        }
+    }
+#endif
 
 #ifdef _WIN32
     int pid = (int)GetCurrentProcessId();
@@ -385,8 +413,16 @@ bool Launch(const std::string &zippath) {
         temp.c_str(), ziparg, instarg, pidarg, relarg);
 
 #ifdef _WIN32
-    std::string cmdline = "\"" + temp + "\" --self-update-stage2 " +
-        ziparg + " " + instarg + " " + pidarg + " " + relarg;
+    // CreateProcessA feeds one string to MSVCRT's argv tokenizer, which
+    // splits on unquoted whitespace. Paths like "C:\Users\Space Command\..."
+    // split in half — seen in stage-2 logs as install=C:\Users\Space,
+    // extract then fails with ERROR_FILE_NOT_FOUND. Quote every --key=value
+    // whose value is a path. pidarg has no spaces so it stays bare.
+    std::string cmdline = "\"" + temp + "\" --self-update-stage2"
+        + " \"--zip=" + zippath + "\""
+        + " \"--install-dir=" + install + "\""
+        + " " + pidarg
+        + " \"--relaunch=" + self + "\"";
     STARTUPINFOA si{}; si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
     if (!CreateProcessA(NULL, (LPSTR)cmdline.c_str(), NULL, NULL, FALSE,

@@ -1,6 +1,13 @@
 build/
+build-new/
+build-old/
+test-update-host/
+update.json
+.vcpkg/
 lobby.json
 server/zsilencer-lobby
+server/zsilencer-lobby.exe
+server/zsilencer-lobby.exe~
 server/*.tmp
 *.o
 *.obj
