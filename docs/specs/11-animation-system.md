@@ -169,7 +169,7 @@ release/recoil. Weapon fires at `state_i = 5`.
 | `state_i` | `res_index` | Phase |
 |-----------|-------------|-------|
 | 0–4 | 0–4 | Wind-up (approaches aim at double speed — `state_i++` extra) |
-| 5 | 4 or 5 | **Fire frame** — projectile created. Flamer uses index 5 |
+| 5 | 4 or 5 | **Fire frame** — projectile created. Index 4 for most weapons; Flamer uses index 5 |
 | 6–(5+delay) | 4 | Hold pose (weapon-dependent delay) |
 | 5+delay → 8+delay | loops to 5 | Auto-fire loop if fire held |
 | Release: 200–204 | 4→0 | Retract animation (4 frames) |
@@ -200,7 +200,10 @@ Hacking frame detail:
 - Frames 0–14: approach and jack-in animation.
 - Frame 14: jack-in sound plays.
 - Frames 15–16: looping hack cycle (data extraction happens at frame 16,
-  resets to 15 on successful hack tick).
+  resets to 15 on successful hack tick). If the terminal becomes unhackable
+  (another player takes it, or it's fully drained), the retract phase begins
+  immediately. When `state_i` reaches 16 and the terminal's `juice` is
+  depleted, the hack ends and retract begins.
 - On release: frames 17–32 reverse out (retract animation plays in reverse).
   `res_index = (17 - state_i) + 16` during retract.
 
@@ -266,7 +269,7 @@ All guard shoot animations follow a similar pattern:
 | Fire | 6 or 7 | — | Projectile created |
 | Hold | peak → peak+3 | peak (held) | Pause after firing (gap of ~3 frames) |
 | Retract | peak+4 → peak×2 | peak → 0 | Reverse animation back to neutral |
-| Transition | — | — | Returns to STANDING or CROUCHED |
+| Transition | — | — | Returns to STANDING (from standing/walking shoots) or CROUCHED (from crouched shoot) |
 
 Cooldown between shots: **48 ticks** (2 seconds).
 
@@ -362,8 +365,9 @@ When an entity takes damage, a `state_hit` value is set:
 | Shield depleted + overflow | `1 + (1 × 32)` | Red flash |
 | Shield absorbed | `1 + (2 × 32)` | Blue/shield flash |
 
-The hit flash plays for `state_hit % 32` ticks (up to ~10 frames), overlaying
-the entity's normal animation with a tinted version.
+The hit flash lasts `state_hit % 32` ticks (decrementing each tick down to 0,
+so a maximum of ~31 ticks ≈ 1.3 seconds), overlaying the entity's normal
+animation with a tinted version.
 
 ## Warp Effect
 
