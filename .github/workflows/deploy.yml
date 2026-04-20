@@ -73,7 +73,7 @@ jobs:
       - name: Install C++ build deps
         uses: awalsh128/cache-apt-pkgs-action@v1
         with:
-          packages: cmake build-essential libsdl2-dev libsdl2-mixer-dev zlib1g-dev
+          packages: cmake build-essential libsdl2-dev libsdl2-mixer-dev zlib1g-dev libcurl4-openssl-dev libminizip-dev
           version: 1.0
 
       - name: Setup ccache
