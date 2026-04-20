@@ -57,15 +57,40 @@ target_compile_definitions(${PROJECT} PRIVATE
 find_package(ZLIB REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_mixer REQUIRED)
+find_package(CURL REQUIRED)
+find_package(unofficial-minizip CONFIG QUIET)
+if(NOT unofficial-minizip_FOUND)
+	find_package(minizip CONFIG QUIET)
+endif()
 include_directories(${SDL2_INCLUDE_DIR} ${SDL2_MIXER_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
 
 if(APPLE)
 	find_library(COCOA_FRAMEWORK Cocoa)
-	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY} ${COCOA_FRAMEWORK})
+	target_link_libraries(${PROJECT}
+		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
+		CURL::libcurl
+		${COCOA_FRAMEWORK})
+	if(TARGET unofficial::minizip::minizip)
+		target_link_libraries(${PROJECT} unofficial::minizip::minizip)
+	elseif(TARGET minizip::minizip)
+		target_link_libraries(${PROJECT} minizip::minizip)
+	endif()
 elseif(WIN32)
-	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY} ws2_32)
+	target_link_libraries(${PROJECT}
+		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
+		CURL::libcurl ws2_32)
+	if(TARGET unofficial::minizip::minizip)
+		target_link_libraries(${PROJECT} unofficial::minizip::minizip)
+	endif()
 else()
-	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY})
+	target_link_libraries(${PROJECT}
+		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
+		CURL::libcurl)
+	if(TARGET unofficial::minizip::minizip)
+		target_link_libraries(${PROJECT} unofficial::minizip::minizip)
+	elseif(TARGET minizip::minizip)
+		target_link_libraries(${PROJECT} minizip::minizip)
+	endif()
 endif()
 
 install(TARGETS "${PROJECT}" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" BUNDLE DESTINATION "${CMAKE_INSTALL_BINDIR}")
