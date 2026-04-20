@@ -131,9 +131,58 @@ bool WaitForPidExit(int pid, int timeout_ms) {
 
 bool RenameDir(const std::string &src, const std::string &dst) {
 #ifdef _WIN32
-    return MoveFileA(src.c_str(), dst.c_str()) != 0;
+    if (MoveFileA(src.c_str(), dst.c_str()) != 0) return true;
+    fprintf(stderr, "[stage2] MoveFileA %s -> %s failed: %lu\n",
+        src.c_str(), dst.c_str(), GetLastError());
+    return false;
 #else
-    return rename(src.c_str(), dst.c_str()) == 0;
+    if (rename(src.c_str(), dst.c_str()) == 0) return true;
+    fprintf(stderr, "[stage2] rename %s -> %s failed: %s\n",
+        src.c_str(), dst.c_str(), strerror(errno));
+    return false;
+#endif
+}
+
+// Best-effort recursive delete. Used to strip `__MACOSX/` siblings that
+// ditto --sequesterRsrc bakes alongside the real bundle — leaving them
+// in place would break FindSingleTopDir (sees 2 entries) and pollute the
+// installed app.
+void RemoveDirRecursive(const std::string &path) {
+#ifdef _WIN32
+    WIN32_FIND_DATAA fd;
+    std::string pattern = path + "\\*";
+    HANDLE h = FindFirstFileA(pattern.c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        std::string n = fd.cFileName;
+        if (n == "." || n == "..") continue;
+        std::string child = path + "\\" + n;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            RemoveDirRecursive(child);
+        } else {
+            DeleteFileA(child.c_str());
+        }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    RemoveDirectoryA(path.c_str());
+#else
+    DIR *d = opendir(path.c_str());
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d)) != NULL) {
+        std::string n = e->d_name;
+        if (n == "." || n == "..") continue;
+        std::string child = path + "/" + n;
+        struct stat st;
+        if (lstat(child.c_str(), &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            RemoveDirRecursive(child);
+        } else {
+            unlink(child.c_str());
+        }
+    }
+    closedir(d);
+    rmdir(path.c_str());
 #endif
 }
 
@@ -216,10 +265,14 @@ int Run(int argc, char **argv) {
         Logf("parent %d still alive after 10s; proceeding anyway", parent_pid);
     }
 
-    // Extract to <install_dir>.new (sibling).
+    // Extract to <install_dir>.new (sibling). Remove any leftover staging
+    // or rollback dirs from a previous failed stage-2 run — otherwise the
+    // rename-install-to-old step below hits ENOTEMPTY and the user is stuck
+    // until they manually clean up the install dir.
     std::string staging = install_dir + ".new";
+    RemoveDirRecursive(staging);
+    RemoveDirRecursive(install_dir + ".old");
 #ifdef _WIN32
-    RemoveDirectoryA(staging.c_str());
     _mkdir(staging.c_str());
 #else
     mkdir(staging.c_str(), 0755);
@@ -240,6 +293,12 @@ int Run(int argc, char **argv) {
         }
         return 2;
     }
+
+    // ditto --sequesterRsrc emits a sibling `__MACOSX/` directory of
+    // AppleDouble files next to the real bundle. We don't want any of
+    // that in the installed app, and leaving it in place fools
+    // FindSingleTopDir into thinking the zip has multiple top entries.
+    RemoveDirRecursive(staging + "/__MACOSX");
 
     // Unwrap single-top-dir zips (ditto --keepParent on macOS,
     // Compress-Archive of a staging dir on Windows). If the zip had a
@@ -296,7 +355,7 @@ int Run(int argc, char **argv) {
 #endif
 }
 
-void Launch(const std::string &zippath) {
+bool Launch(const std::string &zippath) {
     std::string self = MySelfPath();
     std::string install = ResolveInstallDir(self);
     std::string temp = TempDir() +
@@ -308,7 +367,7 @@ void Launch(const std::string &zippath) {
 
     if (!CopyFile_(self, temp)) {
         Logf("copy self → %s failed", temp.c_str());
-        exit(1);
+        return false;
     }
 
 #ifdef _WIN32
@@ -330,17 +389,25 @@ void Launch(const std::string &zippath) {
         ziparg + " " + instarg + " " + pidarg + " " + relarg;
     STARTUPINFOA si{}; si.cb = sizeof(si);
     PROCESS_INFORMATION pi{};
-    CreateProcessA(NULL, (LPSTR)cmdline.c_str(), NULL, NULL, FALSE, CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi);
+    if (!CreateProcessA(NULL, (LPSTR)cmdline.c_str(), NULL, NULL, FALSE,
+            CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi)) {
+        Logf("CreateProcess(stage2) failed: %lu", GetLastError());
+        return false;
+    }
     CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
-    exit(0);
+    return true;
 #else
     pid_t f = fork();
+    if (f < 0) {
+        Logf("fork(stage2) failed: %s", strerror(errno));
+        return false;
+    }
     if (f == 0) {
         execl(temp.c_str(), temp.c_str(), "--self-update-stage2",
               ziparg, instarg, pidarg, relarg, (char*)nullptr);
         _exit(99);
     }
-    exit(0);
+    return true;
 #endif
 }
 

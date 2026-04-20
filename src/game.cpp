@@ -101,6 +101,7 @@ Game::Game() : renderer(world), screenbuffer(640, 480){
 	mapexistchecked = false;
 	fullscreentoggled = false;
 	replayfile = 0;
+	stage2spawned = false;
 }
 
 Game::~Game(){
@@ -517,6 +518,11 @@ Uint32 Game::TimerCallback(Uint32 interval, void * param){
 }
 
 bool Game::Loop(void){
+	if(stage2spawned){
+		// Stage-2 child has been spawned and is waiting on our PID to exit.
+		// Tell main to unwind so ~Game() tears down SDL/audio cleanly.
+		return false;
+	}
 	unsigned int wait = 42; // 24 fps
 	if(updatetitle){
 		char title[128];
@@ -3776,27 +3782,21 @@ Interface * Game::CreateModalDialog(const char * message, bool ok){
 
 Interface * Game::CreateUpdateInterface(void){
 	Interface * iface = static_cast<Interface *>(world.CreateObject(ObjectTypes::INTERFACE));
-	// Background (reuse modal-dialog sprite).
+	// Background (reuse modal-dialog sprite — same one CreateModalDialog uses;
+	// its baked-in offsets center it, so no x/y needed).
 	Overlay * background = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
 	background->renderpass = 3;
 	background->res_bank = 40;
 	background->res_index = 4;
-	// Title.
-	Overlay * title = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
-	title->renderpass = 3;
-	title->text = "Update required";
-	title->textbank = 134;
-	title->textwidth = 8;
-	title->x = 320 - ((title->text.length() * title->textwidth) / 2);
-	title->y = 120;
-	// Status line (mutated each frame based on Updater state).
+	// Status line (mutated each frame; x re-centered in ProcessUpdateInterface
+	// since text length varies with state).
 	Overlay * status = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
 	status->renderpass = 3;
 	status->text = "";
 	status->textbank = 134;
 	status->textwidth = 8;
-	status->x = 160;
-	status->y = 180;
+	status->x = 320;
+	status->y = 200;
 	status->uid = 1;
 	// Progress bar (sized by ProcessUpdateInterface while DOWNLOADING).
 	Overlay * progress = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
@@ -3804,40 +3804,42 @@ Interface * Game::CreateUpdateInterface(void){
 	progress->text = "";
 	progress->textbank = 134;
 	progress->textwidth = 8;
-	progress->x = 160;
-	progress->y = 210;
+	progress->x = 320;
+	progress->y = 215;
 	progress->uid = 2;
-	// Buttons — uids 250..253.
+	// Action buttons — uids 250, 252, 253 share the left slot; exactly one is
+	// visible based on Updater state. Cancel (251) is always on the right.
+	// Two B156x21 side-by-side centered on x=320 (mirrors horizontal pair
+	// in CreateLobbyConnectInterface, scaled up).
 	Button * updatebutton = static_cast<Button *>(world.CreateObject(ObjectTypes::BUTTON));
 	updatebutton->renderpass = 3;
-	updatebutton->x = 80;
-	updatebutton->y = 240;
+	updatebutton->x = 161;
+	updatebutton->y = 230;
 	updatebutton->SetType(Button::B156x21);
 	updatebutton->uid = 250;
 	strcpy(updatebutton->text, "Update");
 	Button * cancelbutton = static_cast<Button *>(world.CreateObject(ObjectTypes::BUTTON));
 	cancelbutton->renderpass = 3;
-	cancelbutton->x = 242;
-	cancelbutton->y = 240;
+	cancelbutton->x = 322;
+	cancelbutton->y = 230;
 	cancelbutton->SetType(Button::B156x21);
 	cancelbutton->uid = 251;
 	strcpy(cancelbutton->text, "Cancel");
 	Button * retrybutton = static_cast<Button *>(world.CreateObject(ObjectTypes::BUTTON));
 	retrybutton->renderpass = 3;
-	retrybutton->x = 242;
-	retrybutton->y = 270;
+	retrybutton->x = 161;
+	retrybutton->y = 230;
 	retrybutton->SetType(Button::B156x21);
 	retrybutton->uid = 252;
 	strcpy(retrybutton->text, "Retry");
 	Button * openbutton = static_cast<Button *>(world.CreateObject(ObjectTypes::BUTTON));
 	openbutton->renderpass = 3;
-	openbutton->x = 404;
-	openbutton->y = 270;
+	openbutton->x = 161;
+	openbutton->y = 230;
 	openbutton->SetType(Button::B156x21);
 	openbutton->uid = 253;
-	strcpy(openbutton->text, "Open download page");
+	strcpy(openbutton->text, "Download");
 	iface->AddObject(background->id);
-	iface->AddObject(title->id);
 	iface->AddObject(status->id);
 	iface->AddObject(progress->id);
 	iface->AddObject(updatebutton->id);
@@ -3885,13 +3887,14 @@ void Game::ProcessUpdateInterface(Interface * iface){
 						overlay->text = "";
 					break;
 				}
+				overlay->x = 320 - ((overlay->text.length() * overlay->textwidth) / 2);
 			}else if(overlay->uid == 2){
 				// Simple textual progress indicator for now; real bar rendering
 				// can be introduced later without re-touching the state wiring.
 				if(ustate == Updater::DOWNLOADING){
-					int width = int(updater.GetProgress() * 40.0f);
+					int width = int(updater.GetProgress() * 20.0f);
 					std::string bar = "[";
-					for(int i = 0; i < 40; i++){
+					for(int i = 0; i < 20; i++){
 						bar += (i < width) ? "=" : " ";
 					}
 					bar += "]";
@@ -3899,6 +3902,7 @@ void Game::ProcessUpdateInterface(Interface * iface){
 				}else{
 					overlay->text = "";
 				}
+				overlay->x = 320 - ((overlay->text.length() * overlay->textwidth) / 2);
 			}
 		}else if(object->type == ObjectTypes::BUTTON){
 			Button * button = static_cast<Button *>(object);
@@ -3913,19 +3917,19 @@ void Game::ProcessUpdateInterface(Interface * iface){
 				case 252: // Retry
 					active = (ustate == Updater::FAILED && updater.GetRetryCount() < 3);
 				break;
-				case 253: // Open download page
+				case 253: // Download (opens browser to release page)
 					active = (ustate == Updater::FAILED && updater.GetRetryCount() >= 3);
 				break;
 				default:
 					continue;
 			}
-			if(active){
-				if(button->state == Button::INACTIVE){
-					button->Activate();
-				}
-			}else{
-				button->Deactivate();
-			}
+			// 250/252/253 overlap (same x/y); only the active one draws.
+			// Cancel (251) always draws; the click handler below guards by
+			// ustate so stale clicks during VERIFYING/STAGING are no-ops.
+			// Don't touch button->state here — Interface::Tick owns hover
+			// activation, and fighting it causes the hover sound to spam
+			// every frame the mouse isn't over the button.
+			button->draw = active || (button->uid == 251);
 		}
 	}
 	// Pass 2: dispatch button clicks.
@@ -3981,8 +3985,6 @@ void Game::ProcessUpdateInterface(Interface * iface){
 }
 
 void Game::LaunchStage2(void){
-	// SDL is torn down via process exit — UpdaterStage2::Launch forks the
-	// stage-2 child and exit(0)s the parent, so SDL state doesn't leak.
 	std::string zippath =
 #ifdef _WIN32
 		std::string(getenv("TEMP") ? getenv("TEMP") : ".") + "\\zsilencer-update.zip";
@@ -3991,10 +3993,16 @@ void Game::LaunchStage2(void){
 #endif
 	fprintf(stderr, "[updater] Game::LaunchStage2 invoking UpdaterStage2::Launch with zip=%s\n",
 		zippath.c_str());
-	UpdaterStage2::Launch(zippath);
-	// Launch calls exit(0) on success. If we got here, something failed; fall
-	// back to the main menu so the user isn't stranded in a dead state.
-	fprintf(stderr, "[updater] UpdaterStage2::Launch returned unexpectedly\n");
+	// Launch now returns after a successful spawn (rather than exit(0)ing),
+	// so main() can unwind normally and ~Game() can close SDL + the audio
+	// device cleanly before the new client process opens them. An exit(0)
+	// here would skip the destructor on `Game game;` in main() and leave
+	// the audio device open, producing a pop on restart.
+	if(UpdaterStage2::Launch(zippath)){
+		stage2spawned = true;
+		return;
+	}
+	fprintf(stderr, "[updater] UpdaterStage2::Launch failed; returning to main menu\n");
 	GoToState(MAINMENU);
 }
 

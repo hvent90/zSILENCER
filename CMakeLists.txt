@@ -58,10 +58,37 @@ find_package(ZLIB REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_mixer REQUIRED)
 find_package(CURL REQUIRED)
+
+# Minizip: prefer vcpkg's CMake CONFIG packages (Windows CI), then fall back
+# to pkg-config for Homebrew/apt. Wrap whichever we find in a single
+# `minizip_dep` interface target so the link sections below don't have to
+# care which source it came from. Fail loudly if none resolves — a silent
+# miss used to slip through and surface as `unzip.h not found`.
 find_package(unofficial-minizip CONFIG QUIET)
 if(NOT unofficial-minizip_FOUND)
 	find_package(minizip CONFIG QUIET)
 endif()
+
+add_library(minizip_dep INTERFACE)
+if(TARGET unofficial::minizip::minizip)
+	target_link_libraries(minizip_dep INTERFACE unofficial::minizip::minizip)
+elseif(TARGET minizip::minizip)
+	target_link_libraries(minizip_dep INTERFACE minizip::minizip)
+else()
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(MINIZIP REQUIRED IMPORTED_TARGET minizip)
+	# Homebrew/apt minizip ships headers at <prefix>/include/minizip/unzip.h,
+	# so the pkg-config -I flag alone doesn't let `#include <unzip.h>` resolve.
+	# vcpkg's minizip flattens them into include/ directly, which is why
+	# Windows doesn't hit this.
+	foreach(_dir ${MINIZIP_INCLUDE_DIRS})
+		if(IS_DIRECTORY "${_dir}/minizip")
+			target_include_directories(minizip_dep INTERFACE "${_dir}/minizip")
+		endif()
+	endforeach()
+	target_link_libraries(minizip_dep INTERFACE PkgConfig::MINIZIP)
+endif()
+
 include_directories(${SDL2_INCLUDE_DIR} ${SDL2_MIXER_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
 
 if(APPLE)
@@ -70,28 +97,17 @@ if(APPLE)
 		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
 		CURL::libcurl
 		${COCOA_FRAMEWORK})
-	if(TARGET unofficial::minizip::minizip)
-		target_link_libraries(${PROJECT} unofficial::minizip::minizip)
-	elseif(TARGET minizip::minizip)
-		target_link_libraries(${PROJECT} minizip::minizip)
-	endif()
 elseif(WIN32)
 	target_link_libraries(${PROJECT}
 		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
 		CURL::libcurl ws2_32)
-	if(TARGET unofficial::minizip::minizip)
-		target_link_libraries(${PROJECT} unofficial::minizip::minizip)
-	endif()
 else()
 	target_link_libraries(${PROJECT}
 		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
 		CURL::libcurl)
-	if(TARGET unofficial::minizip::minizip)
-		target_link_libraries(${PROJECT} unofficial::minizip::minizip)
-	elseif(TARGET minizip::minizip)
-		target_link_libraries(${PROJECT} minizip::minizip)
-	endif()
 endif()
+
+target_link_libraries(${PROJECT} minizip_dep)
 
 install(TARGETS "${PROJECT}" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" BUNDLE DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(DIRECTORY "data/" DESTINATION "${CMAKE_INSTALL_DATADIR}/${PROJECT}")

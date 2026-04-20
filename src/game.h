@@ -165,6 +165,11 @@ private:
 	char currentmusictrack[256];
 	bool fullscreentoggled;
 	char * replayfile;
+	// Set when UpdaterStage2 has been spawned; next Loop() returns false so
+	// main unwinds and ~Game tears down SDL/audio cleanly before the new
+	// client process opens the device. Skipping this teardown produces an
+	// audible pop on the restarted client.
+	bool stage2spawned;
 };
 
 #endif
