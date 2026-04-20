@@ -26,9 +26,12 @@
 #ifndef ZSILENCER_LOBBY_PORT
 #define ZSILENCER_LOBBY_PORT 517
 #endif
+#ifndef ZSILENCER_VERSION
+#define ZSILENCER_VERSION "00024"
+#endif
 
 Game::Game() : renderer(world), screenbuffer(640, 480){
-	world.SetVersion("00023");
+	world.SetVersion(ZSILENCER_VERSION);
 	frames = 0;
 	fps = 0;
 	state = MAINMENU;
