@@ -93,6 +93,62 @@ jobs:
             sudo systemctl is-active zsilencer-lobby
           "
 
+      - name: Build update.json from release artifacts
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG:      ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # release.yml runs in parallel on the same tag. Wait for both zips
+          # to appear on the release before building the manifest.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if gh release view "$TAG" --json assets --jq '.assets[].name' \
+              | grep -q "zsilencer-macos-arm64.zip" \
+              && gh release view "$TAG" --json assets --jq '.assets[].name' \
+              | grep -q "zsilencer-windows-x64.zip"; then
+              echo "Assets ready on $TAG"
+              break
+            fi
+            echo "Assets not ready, retrying in 30s (attempt $i/10)"
+            sleep 30
+          done
+
+          mkdir -p manifest-staging
+          cd manifest-staging
+          gh release download "$TAG" \
+            -R "${{ github.repository }}" \
+            -p "zsilencer-macos-arm64.zip" \
+            -p "zsilencer-windows-x64.zip"
+
+          MAC_SHA=$(shasum -a 256 zsilencer-macos-arm64.zip | awk '{print $1}')
+          WIN_SHA=$(shasum -a 256 zsilencer-windows-x64.zip | awk '{print $1}')
+
+          BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          cat > update.json <<EOF
+          {
+            "version":        "${TAG#v}",
+            "macos_url":      "${BASE}/zsilencer-macos-arm64.zip",
+            "macos_sha256":   "${MAC_SHA}",
+            "windows_url":    "${BASE}/zsilencer-windows-x64.zip",
+            "windows_sha256": "${WIN_SHA}"
+          }
+          EOF
+          cat update.json
+
+      - name: Upload update.json to lobby
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          scp -i ~/.ssh/deploy -o StrictHostKeyChecking=accept-new \
+            manifest-staging/update.json "ubuntu@${HOST}:/tmp/update.json"
+          ssh -i ~/.ssh/deploy ubuntu@$HOST "
+            sudo mv /tmp/update.json /opt/zsilencer/update.json
+            sudo systemctl restart zsilencer-lobby
+          "
+
       - name: Prune old releases (keep last 3)
         env:
           HOST: ${{ vars.DEPLOY_HOST }}
