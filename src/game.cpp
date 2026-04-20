@@ -4684,13 +4684,14 @@ bool Game::ProcessLobbyInterface(Interface * iface){
 							}
 							Uint8 lastgroup = 255;
 							for(auto & r : rows){
+								if(r.group > 2) continue;
 								if(r.group != lastgroup){
 									if(lastgroup != 255){
 										textbox->AddLine("", 0, 128, false);
 									}
 									char header[32];
 									const char * groupName = (r.group == 0) ? "In Lobby" : (r.group == 1) ? "Pregame" : "Playing";
-									sprintf(header, "%s (%d)", groupName, groupCounts[r.group]);
+									snprintf(header, sizeof(header), "%s (%d)", groupName, groupCounts[r.group]);
 									textbox->AddText(header, 189, 128 + 48, 0, false);
 									lastgroup = r.group;
 								}
