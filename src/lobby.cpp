@@ -31,6 +31,9 @@ Lobby::Lobby(World * world){
 	serverip[0] = 0;
 	sockethandle = -1;
 	statupgraded = false;
+	updateavailable = false;
+	updateurl.clear();
+	memset(updatesha256, 0, sizeof(updatesha256));
 }
 
 Lobby::~Lobby(){
@@ -302,14 +305,48 @@ void Lobby::DoNetwork(void){
 									printf("sent MSG_CONNECTs to client (%d:%d, %d:%d)\n", port, ret, publicport, ret2);*/
 								}break;
 								case MSG_VERSION:{
-									//printf("MSG_VERSION received\n");
 									Uint8 success;
 									data.Get(success);
 									versionchecked = true;
-									if(success){
-										versionok = true;
-									}else{
-										versionok = false;
+									versionok = (success != 0);
+									updateavailable = false;
+									updateurl.clear();
+									memset(updatesha256, 0, sizeof(updatesha256));
+
+									if(!success){
+										// New wire format carries optional url + sha256 after the success byte.
+										// Old lobbies send just the success byte — detect by checking remaining bytes.
+										unsigned int consumed_bits = data.readoffset;
+										unsigned int total_bits = data.offset;
+										unsigned int remaining_bytes = (total_bits > consumed_bits)
+											? (total_bits - consumed_bits) / 8
+											: 0;
+
+										if(remaining_bytes >= 2 + 32){
+											Uint16 urllen;
+											data.Get(urllen);
+											if(urllen > 0 && remaining_bytes >= 2u + urllen + 32u && urllen < 512){
+												char urlbuf[512] = {0};
+												for(Uint16 i = 0; i < urllen; i++){
+													Uint8 ch;
+													data.Get(ch);
+													urlbuf[i] = (char)ch;
+												}
+												for(int i = 0; i < 32; i++){
+													Uint8 ch;
+													data.Get(ch);
+													updatesha256[i] = ch;
+												}
+												updateurl.assign(urlbuf, urllen);
+												updateavailable = true;
+												fprintf(stderr, "[updater] MSG_VERSION reject + update: url=%s\n", urlbuf);
+											} else {
+												fprintf(stderr, "[updater] MSG_VERSION reject with malformed update payload (urllen=%u, remaining=%u)\n",
+													(unsigned)urllen, remaining_bytes);
+											}
+										} else {
+											fprintf(stderr, "[updater] MSG_VERSION reject, no update info (old lobby or unknown platform)\n");
+										}
 									}
 								}break;
 								case MSG_USERINFO:{

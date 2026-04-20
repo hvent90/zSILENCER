@@ -8,6 +8,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <string>
 
 class Lobby
 {
@@ -49,6 +50,9 @@ public:
 	char serverip[256];
 	bool versionchecked;
 	bool versionok;
+	bool updateavailable;       // true iff lobby rejected us AND sent an URL
+	std::string updateurl;
+	uint8_t updatesha256[32];
 	Uint8 selectedagency;
 	bool statupgraded;
 
