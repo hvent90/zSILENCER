@@ -6,9 +6,11 @@ set(TEST_SRC
     updater_sha256_test.cpp
     updater_download_test.cpp
     updater_zip_test.cpp
+    updater_sm_test.cpp
     ${CMAKE_SOURCE_DIR}/src/updatersha256.cpp
     ${CMAKE_SOURCE_DIR}/src/updaterdownload.cpp
     ${CMAKE_SOURCE_DIR}/src/updaterzip.cpp
+    ${CMAKE_SOURCE_DIR}/src/updater.cpp
 )
 
 add_executable(zsilencer_tests ${TEST_SRC})
