@@ -43,6 +43,7 @@ Game::Game() : renderer(world), screenbuffer(640, 480){
 	gametechinterface = 0;
 	gameselectinterface = 0;
 	mappreviewinterface = 0;
+	updateinterface = 0;
 	modalinterface = 0;
 	sharedstate = 0;
 	joininggame = false;
@@ -914,6 +915,26 @@ bool Game::Tick(void){
 					if(gamejoininterface || gametechinterface){
 						CreateModalDialog("Disconnected from game");
 					}
+				}
+			}
+		}break;
+		case UPDATING:{
+			if(stateisnew){
+				world.GetAuthorityPeer()->controlledlist.clear();
+				world.DestroyAllObjects();
+				CreateUpdateInterface();
+				world.GetAuthorityPeer()->controlledlist.push_back(currentinterface);
+				renderer.palette.SetPalette(2);
+				screenbuffer.Clear(0);
+				SetColors(renderer.palette.GetColors());
+				stateisnew = false;
+			}else{
+				if(FadedIn()){
+					PlayMusic(world.resources.menumusic);
+				}
+				Interface * iface = static_cast<Interface *>(world.GetObjectFromId(updateinterface));
+				if(iface){
+					ProcessUpdateInterface(iface);
 				}
 			}
 		}break;
@@ -3752,6 +3773,218 @@ Interface * Game::CreateModalDialog(const char * message, bool ok){
 	return dialoginterface;
 }
 
+Interface * Game::CreateUpdateInterface(void){
+	Interface * iface = static_cast<Interface *>(world.CreateObject(ObjectTypes::INTERFACE));
+	// Background (reuse modal-dialog sprite).
+	Overlay * background = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
+	background->renderpass = 3;
+	background->res_bank = 40;
+	background->res_index = 4;
+	// Title.
+	Overlay * title = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
+	title->renderpass = 3;
+	title->text = "Update required";
+	title->textbank = 134;
+	title->textwidth = 8;
+	title->x = 320 - ((title->text.length() * title->textwidth) / 2);
+	title->y = 120;
+	// Status line (mutated each frame based on Updater state).
+	Overlay * status = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
+	status->renderpass = 3;
+	status->text = "";
+	status->textbank = 134;
+	status->textwidth = 8;
+	status->x = 160;
+	status->y = 180;
+	status->uid = 1;
+	// Progress bar (sized by ProcessUpdateInterface while DOWNLOADING).
+	Overlay * progress = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
+	progress->renderpass = 3;
+	progress->text = "";
+	progress->textbank = 134;
+	progress->textwidth = 8;
+	progress->x = 160;
+	progress->y = 210;
+	progress->uid = 2;
+	// Buttons — uids 250..253.
+	Button * updatebutton = static_cast<Button *>(world.CreateObject(ObjectTypes::BUTTON));
+	updatebutton->renderpass = 3;
+	updatebutton->x = 80;
+	updatebutton->y = 240;
+	updatebutton->SetType(Button::B156x21);
+	updatebutton->uid = 250;
+	strcpy(updatebutton->text, "Update");
+	Button * cancelbutton = static_cast<Button *>(world.CreateObject(ObjectTypes::BUTTON));
+	cancelbutton->renderpass = 3;
+	cancelbutton->x = 242;
+	cancelbutton->y = 240;
+	cancelbutton->SetType(Button::B156x21);
+	cancelbutton->uid = 251;
+	strcpy(cancelbutton->text, "Cancel");
+	Button * retrybutton = static_cast<Button *>(world.CreateObject(ObjectTypes::BUTTON));
+	retrybutton->renderpass = 3;
+	retrybutton->x = 242;
+	retrybutton->y = 270;
+	retrybutton->SetType(Button::B156x21);
+	retrybutton->uid = 252;
+	strcpy(retrybutton->text, "Retry");
+	Button * openbutton = static_cast<Button *>(world.CreateObject(ObjectTypes::BUTTON));
+	openbutton->renderpass = 3;
+	openbutton->x = 404;
+	openbutton->y = 270;
+	openbutton->SetType(Button::B156x21);
+	openbutton->uid = 253;
+	strcpy(openbutton->text, "Open download page");
+	iface->AddObject(background->id);
+	iface->AddObject(title->id);
+	iface->AddObject(status->id);
+	iface->AddObject(progress->id);
+	iface->AddObject(updatebutton->id);
+	iface->AddObject(cancelbutton->id);
+	iface->AddObject(retrybutton->id);
+	iface->AddObject(openbutton->id);
+	iface->modal = true;
+	updateinterface = iface->id;
+	currentinterface = iface->id;
+	return iface;
+}
+
+void Game::ProcessUpdateInterface(Interface * iface){
+	Updater::State ustate = updater.GetState();
+	// Pass 1: update status/progress overlays and button inactive flags.
+	for(std::vector<Uint16>::iterator it = iface->objects.begin(); it != iface->objects.end(); it++){
+		Object * object = world.GetObjectFromId(*it);
+		if(!object){
+			continue;
+		}
+		if(object->type == ObjectTypes::OVERLAY){
+			Overlay * overlay = static_cast<Overlay *>(object);
+			if(overlay->uid == 1){
+				switch(ustate){
+					case Updater::PROMPTING:
+						overlay->text = "An update is required to play online.";
+					break;
+					case Updater::DOWNLOADING:{
+						char buf[32];
+						snprintf(buf, sizeof(buf), "%d%%", int(updater.GetProgress() * 100));
+						overlay->text = buf;
+					}break;
+					case Updater::VERIFYING:
+						overlay->text = "Verifying...";
+					break;
+					case Updater::STAGING:
+						overlay->text = "Restarting...";
+					break;
+					case Updater::FAILED:
+						overlay->text = updater.GetErrorMessage();
+					break;
+					case Updater::IDLE:
+					case Updater::DONE:
+					default:
+						overlay->text = "";
+					break;
+				}
+			}else if(overlay->uid == 2){
+				// Simple textual progress indicator for now; real bar rendering
+				// can be introduced later without re-touching the state wiring.
+				if(ustate == Updater::DOWNLOADING){
+					int width = int(updater.GetProgress() * 40.0f);
+					std::string bar = "[";
+					for(int i = 0; i < 40; i++){
+						bar += (i < width) ? "=" : " ";
+					}
+					bar += "]";
+					overlay->text = bar;
+				}else{
+					overlay->text = "";
+				}
+			}
+		}else if(object->type == ObjectTypes::BUTTON){
+			Button * button = static_cast<Button *>(object);
+			bool active = false;
+			switch(button->uid){
+				case 250: // Update
+					active = (ustate == Updater::PROMPTING);
+				break;
+				case 251: // Cancel
+					active = (ustate == Updater::PROMPTING || ustate == Updater::DOWNLOADING || ustate == Updater::FAILED);
+				break;
+				case 252: // Retry
+					active = (ustate == Updater::FAILED && updater.GetRetryCount() < 3);
+				break;
+				case 253: // Open download page
+					active = (ustate == Updater::FAILED && updater.GetRetryCount() >= 3);
+				break;
+				default:
+					continue;
+			}
+			if(active){
+				if(button->state == Button::INACTIVE){
+					button->Activate();
+				}
+			}else{
+				button->Deactivate();
+			}
+		}
+	}
+	// Pass 2: dispatch button clicks.
+	for(std::vector<Uint16>::iterator it = iface->objects.begin(); it != iface->objects.end(); it++){
+		Object * object = world.GetObjectFromId(*it);
+		if(!object || object->type != ObjectTypes::BUTTON){
+			continue;
+		}
+		Button * button = static_cast<Button *>(object);
+		if(!button->clicked){
+			continue;
+		}
+		switch(button->uid){
+			case 250:{
+				if(ustate == Updater::PROMPTING){
+					updater.Consent();
+				}
+			}break;
+			case 251:{
+				if(ustate == Updater::PROMPTING || ustate == Updater::DOWNLOADING || ustate == Updater::FAILED){
+					if(ustate == Updater::DOWNLOADING){
+						updater.Cancel();
+					}
+					GoToState(MAINMENU);
+				}
+			}break;
+			case 252:{
+				if(ustate == Updater::FAILED && updater.GetRetryCount() < 3){
+					updater.Retry();
+				}
+			}break;
+			case 253:{
+				if(ustate == Updater::FAILED && updater.GetRetryCount() >= 3){
+					std::string url = updater.GetDownloadURL();
+#ifdef _WIN32
+					std::string cmd = "start \"\" \"" + url + "\"";
+#elif defined(__APPLE__)
+					std::string cmd = "open '" + url + "'";
+#else
+					std::string cmd = "xdg-open '" + url + "' &";
+#endif
+					system(cmd.c_str());
+					GoToState(MAINMENU);
+				}
+			}break;
+		}
+		button->clicked = false;
+	}
+	// If the updater reached STAGING, hand off to the stage-2 launcher.
+	if(updater.GetState() == Updater::STAGING){
+		LaunchStage2();
+	}
+}
+
+void Game::LaunchStage2(void){
+	fprintf(stderr, "[updater] LaunchStage2 stub - Task 15 will implement the exec handoff\n");
+	// For now, go back to the main menu so the game stays usable during dev.
+	GoToState(MAINMENU);
+}
+
 Interface * Game::CreateMapPreview(const char * filename){
 	Interface * previewinterface = static_cast<Interface *>(world.CreateObject(ObjectTypes::INTERFACE));
 	Overlay * minimap = static_cast<Overlay *>(world.CreateObject(ObjectTypes::OVERLAY));
@@ -4046,11 +4279,21 @@ void Game::ProcessLobbyConnectInterface(Interface * iface){
 								textbox->AddLine("Software version is current");
 								world.lobby.state = Lobby::AUTHENTICATING;
 							}else{
-								textbox->AddLine("Software is out of date");
-								textbox->AddLine("Get latest version at:");
-								textbox->AddLine("http://zsilencer.com");
-								world.lobby.Disconnect();
-								world.lobby.state = Lobby::IDLE;
+								if(world.lobby.updateavailable){
+									// Route into the auto-updater flow.
+									updater.PresentUpdate(world.lobby.updateurl, world.lobby.updatesha256);
+									world.lobby.Disconnect();
+									world.lobby.state = Lobby::IDLE;
+									world.lobby.UnlockMutex();
+									GoToState(UPDATING);
+									return;
+								}else{
+									textbox->AddLine("Software is out of date");
+									textbox->AddLine("Get latest version at:");
+									textbox->AddLine("http://zsilencer.com");
+									world.lobby.Disconnect();
+									world.lobby.state = Lobby::IDLE;
+								}
 							}
 						}
 					break;

@@ -11,6 +11,7 @@
 #include "button.h"
 #include "overlay.h"
 #include "textbox.h"
+#include "updater.h"
 
 class Game
 {
@@ -58,6 +59,9 @@ private:
 	Interface * CreateGameTechInterface(void);
 	Interface * CreateGameSummaryInterface(Stats & stats, Uint8 agency);
 	Interface * CreateModalDialog(const char * message, bool ok = true);
+	Interface * CreateUpdateInterface(void);
+	void ProcessUpdateInterface(Interface * iface);
+	void LaunchStage2(void);
 	Interface * CreateMapPreview(const char * filename);
 	void PlayMusic(Mix_Music * music);
 	void DestroyModalDialog(void);
@@ -74,6 +78,8 @@ private:
 	Uint16 modalinterface;
 	Uint16 passwordinterface;
 	Uint16 mappreviewinterface;
+	Uint16 updateinterface;
+	Updater updater;
 	Overlay * keynameoverlay[6];
 	Button * c1button[6];
 	Button * cobutton[6];
@@ -105,7 +111,7 @@ private:
 	static const int numkeys = 20;
 	const char * keynames[numkeys];
 	Uint8 keystate[SDL_NUM_SCANCODES];
-	enum {NONE, FADEOUT, MAINMENU, LOBBYCONNECT, LOBBY, INGAME, MISSIONSUMMARY, SINGLEPLAYERGAME, OPTIONS, OPTIONSCONTROLS, OPTIONSDISPLAY, OPTIONSAUDIO, HOSTGAME, JOINGAME, REPLAYGAME, TESTGAME};
+	enum {NONE, FADEOUT, MAINMENU, LOBBYCONNECT, LOBBY, UPDATING, INGAME, MISSIONSUMMARY, SINGLEPLAYERGAME, OPTIONS, OPTIONSCONTROLS, OPTIONSDISPLAY, OPTIONSAUDIO, HOSTGAME, JOINGAME, REPLAYGAME, TESTGAME};
 	Uint8 state;
 	Uint8 nextstate;
 	Uint8 fade_i;
