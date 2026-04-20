@@ -5,8 +5,10 @@ set(TEST_SRC
     smoke_test.cpp
     updater_sha256_test.cpp
     updater_download_test.cpp
+    updater_zip_test.cpp
     ${CMAKE_SOURCE_DIR}/src/updatersha256.cpp
     ${CMAKE_SOURCE_DIR}/src/updaterdownload.cpp
+    ${CMAKE_SOURCE_DIR}/src/updaterzip.cpp
 )
 
 add_executable(zsilencer_tests ${TEST_SRC})
@@ -18,6 +20,22 @@ target_include_directories(zsilencer_tests PRIVATE
 
 add_test(NAME zsilencer_tests COMMAND zsilencer_tests)
 
+target_compile_definitions(zsilencer_tests PRIVATE
+    ZIP_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+)
+
 # Download wrapper needs curl headers even in tests (for the enum).
 find_package(CURL REQUIRED)
 target_link_libraries(zsilencer_tests PRIVATE CURL::libcurl)
+
+find_package(ZLIB REQUIRED)
+find_package(unofficial-minizip CONFIG QUIET)
+if(NOT unofficial-minizip_FOUND)
+    find_package(minizip CONFIG QUIET)
+endif()
+target_link_libraries(zsilencer_tests PRIVATE ${ZLIB_LIBRARY})
+if(TARGET unofficial::minizip::minizip)
+    target_link_libraries(zsilencer_tests PRIVATE unofficial::minizip::minizip)
+elseif(TARGET minizip::minizip)
+    target_link_libraries(zsilencer_tests PRIVATE minizip::minizip)
+endif()
