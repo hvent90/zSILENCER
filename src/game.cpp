@@ -934,15 +934,16 @@ bool Game::Tick(void){
 								strcpy(lastchannel, world.lobby.channel);
 								world.lobby.JoinChannel(temp);
 								gamechattab = temp;
-								// Add game tab button to chat interface
+								// Add game tab overlay to chat interface
 								Interface * chatiface = static_cast<Interface *>(world.GetObjectFromId(chatinterface));
 								if(chatiface){
-									Button * gametab = (Button *)world.CreateObject(ObjectTypes::BUTTON);
-									gametab->x = 70;
-									gametab->y = 197;
-									gametab->SetType(Button::B52x21);
+									Overlay * gametab = (Overlay *)world.CreateObject(ObjectTypes::OVERLAY);
 									gametab->uid = 56;
-									strcpy(gametab->text, "Game");
+									gametab->textbank = 134;
+									gametab->textwidth = 8;
+									gametab->x = 60;
+									gametab->y = 200;
+									gametab->text = "Game";
 									gametabbutton = gametab->id;
 									chatiface->AddObject(gametab->id);
 								}
@@ -3206,12 +3207,13 @@ Interface * Game::CreateChatInterface(void){
 	Overlay * chatinputborder = (Overlay *)world.CreateObject(ObjectTypes::OVERLAY);
 	chatinputborder->res_bank = 7;
 	chatinputborder->res_index = 14;
-	Button * lobbytab = (Button *)world.CreateObject(ObjectTypes::BUTTON);
-	lobbytab->x = 15;
-	lobbytab->y = 197;
-	lobbytab->SetType(Button::B52x21);
+	Overlay * lobbytab = (Overlay *)world.CreateObject(ObjectTypes::OVERLAY);
 	lobbytab->uid = 55;
-	strcpy(lobbytab->text, "Lobby");
+	lobbytab->textbank = 134;
+	lobbytab->textwidth = 8;
+	lobbytab->x = 15;
+	lobbytab->y = 200;
+	lobbytab->text = "Lobby";
 	lobbytabbutton = lobbytab->id;
 	TextBox * textbox = (TextBox *)world.CreateObject(ObjectTypes::TEXTBOX);
 	textbox->x = 19;
@@ -4792,6 +4794,19 @@ bool Game::ProcessLobbyInterface(Interface * iface){
 				case ObjectTypes::OVERLAY:{
 					Overlay * overlay = static_cast<Overlay *>(object);
 					if(overlay){
+						if(overlay->clicked){
+							overlay->clicked = false;
+							switch(overlay->uid){
+								case 55:{ // Lobby chat tab
+									SwitchChatTab("Lobby");
+								}break;
+								case 56:{ // Game chat tab
+									if(!gamechattab.empty()){
+										SwitchChatTab(gamechattab);
+									}
+								}break;
+							}
+						}
 						if(world.lobby.channelchanged){
 							if(strlen(lastchannel) == 0){
 								strcpy(lastchannel, world.lobby.channel);
@@ -5081,14 +5096,6 @@ bool Game::ProcessLobbyInterface(Interface * iface){
 									return false;
 								}
 							break;
-							case 55:{ // Lobby chat tab
-								SwitchChatTab("Lobby");
-							}break;
-							case 56:{ // Game chat tab
-								if(!gamechattab.empty()){
-									SwitchChatTab(gamechattab);
-								}
-							}break;
 						}
 					}
 				}break;
