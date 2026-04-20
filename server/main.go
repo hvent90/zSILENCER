@@ -58,6 +58,7 @@ func main() {
 	proc := newProcManager(*gameBinary, *publicAddr, port)
 	hub := NewHub(store, motd, *publicAddr, proc)
 
+	var discordCancel context.CancelFunc
 	if *discordWebhook != "" || *discordToken != "" {
 		bridge := NewDiscordBridge(*discordWebhook, *discordToken, *discordChannel,
 			func(author, content string) {
@@ -65,8 +66,8 @@ func main() {
 			})
 		hub.discord = bridge
 		if bridge.Enabled() {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			var ctx context.Context
+			ctx, discordCancel = context.WithCancel(context.Background())
 			go bridge.Run(ctx)
 			log.Printf("[discord] bridge enabled (channel=%s)", *discordChannel)
 		} else {
@@ -101,6 +102,9 @@ func main() {
 	go func() {
 		<-sigs
 		log.Printf("shutting down, killing %d dedicated servers", 0)
+		if discordCancel != nil {
+			discordCancel()
+		}
 		proc.StopAll()
 		_ = tcpLn.Close()
 		_ = udpLn.Close()

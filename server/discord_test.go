@@ -60,36 +60,13 @@ func TestPollSkipsSelf(t *testing.T) {
 		},
 	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(msgs)
-	}))
-	defer srv.Close()
-
-	var mu sync.Mutex
-	var relayed []string
-	bridge := &DiscordBridge{
-		botToken:  "fake",
-		channelID: "123",
+	b := &DiscordBridge{
 		webhookID: "hook1",
 		selfBotID: "bot99",
-		lastMsgID: "197",
-		client:    &http.Client{Timeout: 5 * time.Second},
-		onMessage: func(author, content string) {
-			mu.Lock()
-			relayed = append(relayed, author+": "+content)
-			mu.Unlock()
-		},
 	}
 
-	// Override the endpoint by wrapping poll in a custom server
-	// We need to test the shouldSkip logic directly instead.
-	b := bridge
-	selfID := b.selfBotID
-	hookID := b.webhookID
-
 	for _, m := range msgs {
-		skip := b.shouldSkip(m, selfID, hookID)
+		skip := b.shouldSkip(m, b.selfBotID, b.webhookID)
 		if m.ID == "200" && skip {
 			t.Errorf("message %s should NOT be skipped", m.ID)
 		}
@@ -100,8 +77,6 @@ func TestPollSkipsSelf(t *testing.T) {
 			t.Errorf("message %s (bot) should be skipped", m.ID)
 		}
 	}
-	_ = srv // keep server alive for the duration of the test
-	_ = relayed
 }
 
 func TestShouldSkip(t *testing.T) {
@@ -192,6 +167,25 @@ func TestEnabled(t *testing.T) {
 		if got := b.Enabled(); got != tt.want {
 			t.Errorf("Enabled(%q,%q,%q) = %v, want %v", tt.webhook, tt.token, tt.channel, got, tt.want)
 		}
+	}
+}
+
+func TestAuthorDisplayName(t *testing.T) {
+	tests := []struct {
+		name   string
+		author discordAuthor
+		want   string
+	}{
+		{"global name preferred", discordAuthor{GlobalName: "Cool Name", Username: "user123"}, "Cool Name"},
+		{"falls back to username", discordAuthor{Username: "user123"}, "user123"},
+		{"falls back to Discord", discordAuthor{}, "Discord"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.author.displayName(); got != tt.want {
+				t.Errorf("displayName() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

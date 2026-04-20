@@ -246,14 +246,7 @@ func (b *DiscordBridge) poll(ctx context.Context) {
 		if content == "" {
 			continue
 		}
-		author := m.Author.GlobalName
-		if author == "" {
-			author = m.Author.Username
-		}
-		if author == "" {
-			author = "Discord"
-		}
-		b.onMessage(author, content)
+		b.onMessage(m.Author.displayName(), content)
 	}
 
 	// Update lastMsgID to the newest message (first in the array).
@@ -298,4 +291,14 @@ type discordAuthor struct {
 	Username   string `json:"username"`
 	GlobalName string `json:"global_name,omitempty"`
 	Bot        bool   `json:"bot,omitempty"`
+}
+
+func (a discordAuthor) displayName() string {
+	if a.GlobalName != "" {
+		return a.GlobalName
+	}
+	if a.Username != "" {
+		return a.Username
+	}
+	return "Discord"
 }
