@@ -24,6 +24,7 @@ const (
 )
 
 const maxFrame = 255
+const maxUpdateURL = 200 // leaves room for [framelen][op][success][urllen u16][sha256] in a 255-byte frame
 
 func readFrame(r io.Reader) ([]byte, error) {
 	var sz [1]byte
@@ -250,4 +251,75 @@ func encodeUser(w *writer, u *User) {
 		w.u8(a.Contacts)
 	}
 	w.lenStr(u.Name)
+}
+
+// Platform byte appended to MSG_VERSION request by updater-capable clients.
+// Absent from pre-updater clients.
+type Platform uint8
+
+const (
+	PlatformUnknown    Platform = 0
+	PlatformMacOSARM64 Platform = 1
+	PlatformWindowsX64 Platform = 2
+)
+
+type VersionRequest struct {
+	Version  string
+	Platform Platform
+}
+
+type VersionReply struct {
+	OK     bool
+	URL    string   // empty unless reject + manifest available
+	SHA256 [32]byte // zero unless URL non-empty
+}
+
+// decodeVersionRequest parses an opVersion payload (the opcode byte has
+// already been consumed by the dispatcher). Payload layout:
+//
+//	[version cstring][optional platform u8]
+//
+// Pre-updater clients omit the platform byte; we treat that as
+// PlatformUnknown for graceful handling.
+func decodeVersionRequest(payload []byte) (VersionRequest, error) {
+	r := newReader(payload)
+	ver, err := r.cstr(64)
+	if err != nil {
+		return VersionRequest{}, err
+	}
+	req := VersionRequest{Version: ver, Platform: PlatformUnknown}
+	if r.off < len(r.b) {
+		p, err := r.u8()
+		if err != nil {
+			return VersionRequest{}, err
+		}
+		req.Platform = Platform(p)
+	}
+	return req, nil
+}
+
+// encodeVersionReply produces the payload to send back (without the
+// leading opcode byte — callers prepend opVersion).
+//
+//	[success u8]
+//	if !success AND URL != "":
+//	  [url_len u16 LE][url bytes][sha256 32 bytes]
+func encodeVersionReply(rep VersionReply) []byte {
+	w := &writer{}
+	if rep.OK {
+		w.u8(1)
+		return w.b
+	}
+	w.u8(0)
+	if rep.URL != "" {
+		if len(rep.URL) > maxUpdateURL {
+			// This is a manifest misconfiguration, not a runtime condition —
+			// fail loudly so the operator catches it.
+			panic("encodeVersionReply: URL exceeds maxUpdateURL")
+		}
+		w.u16(uint16(len(rep.URL)))
+		w.raw([]byte(rep.URL))
+		w.raw(rep.SHA256[:])
+	}
+	return w.b
 }

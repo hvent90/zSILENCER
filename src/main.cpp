@@ -1,6 +1,8 @@
 #include "shared.h"
 #include "game.h"
 #include "cocoawrapper.h"
+#include "updaterstage2.h"
+#include <vector>
 #ifdef __APPLE__
 #include "CoreFoundation/CoreFoundation.h"
 #include <mach-o/dyld.h>
@@ -138,10 +140,52 @@ void CDResDir(void){
 #endif
 }
 
+static void CleanupPreviousUpdate(void) {
+#ifdef __APPLE__
+	// .app install: sibling foo.app.old. We don't know our exact install dir
+	// here without mach-o/dyld logic; skip cleanup on macOS and rely on the
+	// user trashing .app.old manually. A future tweak could mirror
+	// UpdaterStage2::ResolveInstallDir but that's not worth the coupling yet.
+#else
+	char buf[1024];
+	int n = 0;
+#ifdef _WIN32
+	GetModuleFileNameA(NULL, buf, sizeof(buf));
+	n = (int)strlen(buf);
+#else
+	n = (int)readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+#endif
+	if (n <= 0) return;
+	buf[n] = 0;
+	std::string exe = buf;
+	size_t slash = exe.find_last_of("/\\");
+	if (slash == std::string::npos) return;
+	std::string old_dir = exe.substr(0, slash) + ".old";
+	struct stat st;
+	if (stat(old_dir.c_str(), &st) == 0) {
+		fprintf(stderr, "[updater] cleaning up prior install: %s\n", old_dir.c_str());
+#ifdef _WIN32
+		std::string cmd = "rd /s /q \"" + old_dir + "\"";
+#else
+		std::string cmd = "rm -rf '" + old_dir + "'";
+#endif
+		system(cmd.c_str());
+	}
+#endif
+}
+
 #ifdef POSIX
 int main(int argc, char * argv[]){
 #endif
-	
+
+#ifdef POSIX
+	for(int i = 1; i < argc; i++){
+		if(strcmp(argv[i], "--self-update-stage2") == 0){
+			return UpdaterStage2::Run(argc, argv);
+		}
+	}
+#endif
+
 #ifdef POSIX
 	char cmdlinestr[1024];
 	cmdlinestr[0] = 0;
@@ -157,6 +201,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 	char * cmdline = lpCmdLine;
 #endif
 
+#ifndef POSIX
+	if(lpCmdLine && strstr(lpCmdLine, "--self-update-stage2")){
+		// Use MSVCRT's pre-parsed argv. The previous strtok(" ") split on
+		// every space and wasn't quote-aware — paths like
+		// "C:\Users\Space Command\..." passed via CreateProcessA fragmented
+		// into orphan tokens, and stage-2 saw empty --install-dir / --relaunch
+		// values.
+		return UpdaterStage2::Run(__argc, __argv);
+	}
+#endif
+
 	bool dedicatedmode = (cmdline && strncmp(cmdline, "-s", 2) == 0);
 #ifdef POSIX
 	if(dedicatedmode){
@@ -165,7 +220,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 		signal(SIGBUS, crash_handler);
 	}
 #endif
-    	
+
+	CleanupPreviousUpdate();
+
 #ifndef POSIX
 	WSADATA wsaData;
 	WSAStartup(MAKEWORD(2, 2), &wsaData);

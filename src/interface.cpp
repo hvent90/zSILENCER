@@ -240,6 +240,12 @@ void Interface::ActiveChanged(World & world, Interface * callinginterface, bool 
 				case ObjectTypes::BUTTON:{
 					Button * button = static_cast<Button *>(object);
 					if(button){
+						// Hidden buttons (draw=false) must not hit-test — otherwise
+						// clicking on a stack of overlapping buttons triggers the
+						// invisible ones too.
+						if(!button->draw){
+							break;
+						}
 						if(mouse){
 							if(button->MouseInside(world, mousex, mousey)){
 								if((button->state == Button::INACTIVE || button->state == Button::DEACTIVATING)){

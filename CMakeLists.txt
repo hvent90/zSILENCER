@@ -47,24 +47,67 @@ target_compile_features(${PROJECT} PUBLIC cxx_std_14)
 
 set(ZSILENCER_LOBBY_HOST "127.0.0.1" CACHE STRING "Lobby host the client connects to at startup")
 set(ZSILENCER_LOBBY_PORT "517" CACHE STRING "Lobby TCP port")
+set(ZSILENCER_VERSION "00024" CACHE STRING "Client version string sent to the lobby during MSG_VERSION")
 target_compile_definitions(${PROJECT} PRIVATE
 	ZSILENCER_LOBBY_HOST="${ZSILENCER_LOBBY_HOST}"
 	ZSILENCER_LOBBY_PORT=${ZSILENCER_LOBBY_PORT}
+	ZSILENCER_VERSION="${ZSILENCER_VERSION}"
 )
 
 find_package(ZLIB REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(SDL2_mixer REQUIRED)
+find_package(CURL REQUIRED)
+
+# Minizip: prefer vcpkg's CMake CONFIG packages (Windows CI), then fall back
+# to pkg-config for Homebrew/apt. Wrap whichever we find in a single
+# `minizip_dep` interface target so the link sections below don't have to
+# care which source it came from. Fail loudly if none resolves — a silent
+# miss used to slip through and surface as `unzip.h not found`.
+find_package(unofficial-minizip CONFIG QUIET)
+if(NOT unofficial-minizip_FOUND)
+	find_package(minizip CONFIG QUIET)
+endif()
+
+add_library(minizip_dep INTERFACE)
+if(TARGET unofficial::minizip::minizip)
+	target_link_libraries(minizip_dep INTERFACE unofficial::minizip::minizip)
+elseif(TARGET minizip::minizip)
+	target_link_libraries(minizip_dep INTERFACE minizip::minizip)
+else()
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(MINIZIP REQUIRED IMPORTED_TARGET minizip)
+	# Homebrew/apt minizip ships headers at <prefix>/include/minizip/unzip.h,
+	# so the pkg-config -I flag alone doesn't let `#include <unzip.h>` resolve.
+	# vcpkg's minizip flattens them into include/ directly, which is why
+	# Windows doesn't hit this.
+	foreach(_dir ${MINIZIP_INCLUDE_DIRS})
+		if(IS_DIRECTORY "${_dir}/minizip")
+			target_include_directories(minizip_dep INTERFACE "${_dir}/minizip")
+		endif()
+	endforeach()
+	target_link_libraries(minizip_dep INTERFACE PkgConfig::MINIZIP)
+endif()
+
 include_directories(${SDL2_INCLUDE_DIR} ${SDL2_MIXER_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
 
 if(APPLE)
 	find_library(COCOA_FRAMEWORK Cocoa)
-	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY} ${COCOA_FRAMEWORK})
+	target_link_libraries(${PROJECT}
+		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
+		CURL::libcurl
+		${COCOA_FRAMEWORK})
 elseif(WIN32)
-	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY} ws2_32)
+	target_link_libraries(${PROJECT}
+		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
+		CURL::libcurl ws2_32)
 else()
-	target_link_libraries(${PROJECT} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY})
+	target_link_libraries(${PROJECT}
+		${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY} ${ZLIB_LIBRARY}
+		CURL::libcurl)
 endif()
+
+target_link_libraries(${PROJECT} minizip_dep)
 
 install(TARGETS "${PROJECT}" RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" BUNDLE DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(DIRECTORY "data/" DESTINATION "${CMAKE_INSTALL_DATADIR}/${PROJECT}")
@@ -76,5 +119,11 @@ install(FILES "zsilencer.desktop" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/appl
 
 set(CPACK_PACKAGE_NAME "zSilencer")
 set(CPACK_PACKAGE_VERSION "00023")
+
+option(ZSILENCER_BUILD_TESTS "Build unit tests" OFF)
+if(ZSILENCER_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 include(CPack)
