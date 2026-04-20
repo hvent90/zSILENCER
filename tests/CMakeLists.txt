@@ -1,5 +1,6 @@
 # All test sources aggregate into one binary: keeps link+run simple,
 # doctest handles discovery via its built-in main().
+# doctest v2.4.11 vendored verbatim from https://github.com/doctest/doctest
 set(TEST_SRC
     smoke_test.cpp
 )
@@ -11,5 +12,4 @@ target_include_directories(zsilencer_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 
-enable_testing()
 add_test(NAME zsilencer_tests COMMAND zsilencer_tests)

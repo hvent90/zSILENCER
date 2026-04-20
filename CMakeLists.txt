@@ -79,9 +79,10 @@ install(FILES "zsilencer.desktop" DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/appl
 set(CPACK_PACKAGE_NAME "zSilencer")
 set(CPACK_PACKAGE_VERSION "00023")
 
-include(CPack)
-
 option(ZSILENCER_BUILD_TESTS "Build unit tests" OFF)
 if(ZSILENCER_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(tests)
 endif()
+
+include(CPack)
